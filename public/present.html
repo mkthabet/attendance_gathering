@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Check in</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { background: #fff; color: #111; }
+    .stage { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; padding: 2vh 3vw; gap: 1.5vh; }
+    .top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+    .top h1 { font-size: clamp(1.2rem, 3.2vh, 2.4rem); color: #111; }
+    .count { font-size: clamp(1.2rem, 4vh, 3rem); font-weight: 700; color: #111; white-space: nowrap; }
+    .qr { display: flex; align-items: center; justify-content: center; min-height: 0; }
+    .qr svg { height: min(72vh, 92vw); width: auto; max-width: 92vw; }
+    .bar { height: 8px; background: #e6e8eb; border-radius: 4px; overflow: hidden; }
+    .bar > div { height: 100%; background: #2457d6; transition: width .25s linear; }
+    .bottom { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: #444; }
+    .bottom p { margin: 0; font-size: clamp(.9rem, 2.2vh, 1.4rem); }
+    .bottom button { background: #fff; color: #111; border-color: #ccc; }
+    .closed { text-align: center; align-self: center; }
+    .closed h2 { font-size: 2rem; }
+  </style>
+</head>
+<body>
+<div class="stage">
+  <div class="top"><h1 id="title">Loading…</h1><div class="count" id="count"></div></div>
+  <div class="qr" id="qr"></div>
+  <div>
+    <div class="bar" aria-hidden="true"><div id="bar" style="width:100%"></div></div>
+    <div class="bottom">
+      <p>Scan with your phone camera. The code changes every few seconds.</p>
+      <div class="row">
+        <button id="fs" type="button">Full screen</button>
+        <button id="stop" type="button">Stop check-in</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/vendor/qrcode.js"></script>
+<script src="/app.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const id = new URLSearchParams(location.search).get("id");
+const enc = new TextEncoder();
+let key, windowMs, offset = 0, shownWindow = -1, timer, poll;
+
+function b64url(buf) {
+  let s = "";
+  for (const b of new Uint8Array(buf)) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// Must match qrToken() in src/crypto.ts.
+async function token(win) {
+  return b64url(await crypto.subtle.sign("HMAC", key, enc.encode(id + "." + win))).slice(0, 11);
+}
+
+async function draw(win) {
+  const url = location.origin + "/c/" + id + "/" + win.toString(36) + "/" + (await token(win));
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  $("qr").innerHTML = qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
+}
+
+function tick() {
+  const now = Date.now() + offset;
+  const win = Math.floor(now / windowMs);
+  if (win !== shownWindow) { shownWindow = win; draw(win); }
+  $("bar").style.width = (100 - ((now % windowMs) / windowMs) * 100) + "%";
+}
+
+function closed(message) {
+  clearInterval(timer); clearInterval(poll);
+  document.querySelector(".stage").innerHTML =
+    '<div></div><div class="closed"><h2></h2><p></p><p><a class="button primary" href="/sheet?id=' + id + '">View attendance sheet</a></p></div><div></div>';
+  document.querySelector(".closed h2").textContent = "Check-in closed";
+  document.querySelector(".closed p").textContent = message;
+}
+
+async function start() {
+  await api("/api/admin/sheets/" + id + "/open", { method: "POST" });
+  const t0 = Date.now();
+  const data = await api("/api/admin/sheets/" + id + "/present");
+  offset = data.serverTime - (t0 + Date.now()) / 2;  // correct for laptop clock drift
+  windowMs = data.windowMs;
+  key = await crypto.subtle.importKey("raw", enc.encode(data.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  $("title").textContent = data.sheet.name;
+  document.title = data.sheet.name;
+  $("count").textContent = data.sheet.count + " checked in";
+  tick();
+  timer = setInterval(tick, 250);
+  poll = setInterval(async () => {
+    try {
+      const c = await api("/api/admin/sheets/" + id + "/count");
+      $("count").textContent = c.count + " checked in";
+      if (c.status !== "open") closed(c.count + " students checked in.");
+    } catch {}
+  }, 3000);
+}
+
+$("stop").addEventListener("click", async () => {
+  const c = await api("/api/admin/sheets/" + id + "/close", { method: "POST" });
+  const n = await api("/api/admin/sheets/" + id + "/count");
+  closed(n.count + " students checked in. Students who already scanned can still finish within their time.");
+});
+$("fs").addEventListener("click", () => document.documentElement.requestFullscreen?.());
+
+start().catch((e) => { $("title").textContent = e.message; });
+</script>
+</body>
+</html>
