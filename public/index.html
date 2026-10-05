@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Attendance</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <h1>Attendance</h1>
+  <p class="muted">Students: scan the QR code your lecturer shows in class. This page is for lecturers.</p>
+
+  <section id="login" class="card hidden">
+    <h2>Lecturer sign-in</h2>
+    <form id="login-form">
+      <label for="passcode">Passcode</label>
+      <input id="passcode" type="password" autocomplete="current-password" required>
+      <p id="login-error" class="error"></p>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+  </section>
+
+  <section id="home" class="hidden">
+    <div class="card">
+      <h2>New attendance sheet</h2>
+      <form id="create-form" class="row">
+        <input id="sheet-name" class="grow" type="text" maxlength="120" required
+               placeholder="e.g. CS101 Week 3 lecture">
+        <button class="primary" type="submit">Create</button>
+      </form>
+      <p id="create-error" class="error"></p>
+    </div>
+    <div class="card">
+      <div class="row spread"><h2>Your attendance sheets</h2><button id="logout" type="button">Sign out</button></div>
+      <div id="sheets" class="sheet-list"><p class="muted">Loading…</p></div>
+    </div>
+  </section>
+</main>
+<script src="/app.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function loadSheets() {
+  const { sheets } = await api("/api/admin/sheets");
+  const box = $("sheets");
+  box.replaceChildren();
+  if (!sheets.length) { box.append(el("p", { class: "muted" }, "No sheets yet. Create one above.")); return; }
+  for (const s of sheets) {
+    box.append(el("div", { class: "sheet-item" },
+      el("div", {},
+        el("a", { href: "/sheet?id=" + s.id }, el("strong", {}, s.name)),
+        el("div", { class: "muted" }, fmtDate(s.createdAt) + " · " + s.count + " checked in")),
+      el("div", { class: "row" },
+        el("span", { class: "pill " + s.status }, s.status === "open" ? "Open" : "Closed"),
+        el("a", { class: "button", href: "/sheet?id=" + s.id }, "Open sheet"))));
+  }
+}
+
+async function start() {
+  try {
+    await loadSheets();
+    $("home").classList.remove("hidden");
+  } catch {
+    $("login").classList.remove("hidden");
+  }
+}
+
+$("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("login-error").textContent = "";
+  try {
+    await api("/api/login", { method: "POST", body: { passcode: $("passcode").value } });
+    const next = new URLSearchParams(location.search).get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//")) { location.href = next; return; }
+    $("login").classList.add("hidden");
+    start();
+  } catch (err) { $("login-error").textContent = err.message; }
+});
+
+$("create-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("create-error").textContent = "";
+  try {
+    const { sheet } = await api("/api/admin/sheets", { method: "POST", body: { name: $("sheet-name").value } });
+    location.href = "/sheet?id=" + sheet.id;
+  } catch (err) { $("create-error").textContent = err.message; }
+});
+
+$("logout").addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  location.reload();
+});
+
+// Avoid the 401 redirect loop on the sign-in page itself.
+fetch("/api/admin/sheets").then((r) => r.ok ? start() : $("login").classList.remove("hidden"));
+</script>
+</body>
+</html>

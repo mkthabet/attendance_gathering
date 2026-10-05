@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Attendance sheet</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <p><a href="/">← All sheets</a></p>
+  <div class="card">
+    <form id="rename-form" class="row">
+      <input id="name" class="grow" type="text" maxlength="120" required aria-label="Sheet name">
+      <button type="submit">Rename</button>
+    </form>
+    <p class="muted" id="meta"></p>
+    <div class="row">
+      <button id="present" class="primary" type="button">Start and show QR</button>
+      <button id="toggle" type="button"></button>
+      <a id="csv" class="button" href="#">Download CSV</a>
+    </div>
+    <p id="error" class="error"></p>
+  </div>
+  <div class="card">
+    <h2 id="count"></h2>
+    <table>
+      <thead><tr><th>#</th><th>Name</th><th>Student ID</th><th>Time</th><th>Flags</th><th></th></tr></thead>
+      <tbody id="records"></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <button id="delete" class="danger" type="button">Delete this sheet</button>
+  </div>
+</main>
+<script src="/app.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const id = new URLSearchParams(location.search).get("id");
+let sheet;
+
+function show(e) { $("error").textContent = e.message; }
+
+async function load() {
+  const data = await api("/api/admin/sheets/" + id);
+  sheet = data.sheet;
+  document.title = sheet.name;
+  if (document.activeElement !== $("name")) $("name").value = sheet.name;
+  $("meta").textContent = "Created " + fmtDate(sheet.createdAt) + " · " + (sheet.status === "open" ? "Open for check-in" : "Closed");
+  $("toggle").textContent = sheet.status === "open" ? "Stop check-in" : "Reopen check-in";
+  $("toggle").classList.toggle("hidden", sheet.status !== "open" && !sheet.openedAt);
+  $("csv").href = "/api/admin/sheets/" + id + "/export.csv?tz=" + encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  $("count").textContent = data.records.length + " checked in";
+  const body = $("records");
+  body.replaceChildren();
+  data.records.forEach((r, i) => body.append(el("tr", {},
+    el("td", {}, i + 1), el("td", {}, r.name), el("td", {}, r.studentId), el("td", {}, fmtTime(r.createdAt)),
+    el("td", { class: "flag" }, r.flags),
+    el("td", {}, el("button", { type: "button", class: "danger", title: "Remove this check-in", onclick: async () => {
+      if (!confirm("Remove " + r.name + " (" + r.studentId + ") from this sheet?")) return;
+      await api("/api/admin/sheets/" + id + "/records/" + r.id, { method: "DELETE" }).catch(show);
+      load();
+    } }, "Remove")))));
+}
+
+$("rename-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try { await api("/api/admin/sheets/" + id, { method: "PATCH", body: { name: $("name").value } }); $("name").blur(); load(); }
+  catch (err) { show(err); }
+});
+$("present").addEventListener("click", () => { location.href = "/present?id=" + id; });
+$("toggle").addEventListener("click", async () => {
+  try { await api("/api/admin/sheets/" + id + "/" + (sheet.status === "open" ? "close" : "open"), { method: "POST" }); load(); }
+  catch (err) { show(err); }
+});
+$("delete").addEventListener("click", async () => {
+  if (!confirm("Delete \"" + sheet.name + "\" and all its check-ins? This cannot be undone.")) return;
+  try { await api("/api/admin/sheets/" + id, { method: "DELETE" }); location.href = "/"; } catch (err) { show(err); }
+});
+
+load().catch(show);
+setInterval(() => { if (sheet && sheet.status === "open") load().catch(() => {}); }, 5000);
+</script>
+</body>
+</html>

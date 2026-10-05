@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Check in</title>
+  <link rel="stylesheet" href="/style.css">
+  <style> main { max-width: 480px; } .timer { font-variant-numeric: tabular-nums; } </style>
+</head>
+<body>
+<main>
+  <section id="form-card" class="card hidden">
+    <h1 id="sheet-name"></h1>
+    <p class="muted">Time left to submit: <strong class="timer" id="timer"></strong></p>
+    <form id="form">
+      <label for="name">Full name</label>
+      <input id="name" type="text" autocomplete="name" maxlength="100" required>
+      <label for="sid">Student ID</label>
+      <input id="sid" type="text" inputmode="text" autocomplete="off" maxlength="40" required>
+      <p id="error" class="error"></p>
+      <button class="primary" type="submit" id="submit">Check in</button>
+    </form>
+  </section>
+
+  <section id="done-card" class="card hidden">
+    <h1 class="success">You're checked in</h1>
+    <p id="done-text"></p>
+    <p class="muted">You can close this page.</p>
+  </section>
+
+  <section id="msg-card" class="card hidden">
+    <h1 id="msg-title">Can't check in</h1>
+    <p id="msg-text"></p>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const messages = {
+  expired: "That QR code has already changed. Scan the code on the screen again; it only works for a few seconds.",
+  closed: "Check-in for this class is closed.",
+  unknown: "This QR code is not valid.",
+};
+let expiresAt, offset = 0, timer;
+
+function message(text, title) {
+  clearInterval(timer);
+  $("form-card").classList.add("hidden");
+  $("msg-title").textContent = title || "Can't check in";
+  $("msg-text").textContent = text;
+  $("msg-card").classList.remove("hidden");
+}
+
+function tick() {
+  const left = Math.max(0, expiresAt - (Date.now() + offset));
+  const s = Math.ceil(left / 1000);
+  $("timer").textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  if (left <= 0) message("Your time to submit ran out. Scan the QR code on the screen again.", "Time's up");
+}
+
+async function start() {
+  const err = new URLSearchParams(location.search).get("error");
+  if (err) { message(messages[err] || messages.unknown); return; }
+  const res = await fetch("/api/checkin");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { message(data.error || "Scan the QR code shown in class to check in."); return; }
+  offset = data.serverTime - Date.now();
+  expiresAt = data.expiresAt;
+  $("sheet-name").textContent = data.sheetName;
+  try {
+    $("name").value = localStorage.getItem("att-name") || "";
+    $("sid").value = localStorage.getItem("att-sid") || "";
+  } catch {}
+  $("form-card").classList.remove("hidden");
+  tick();
+  timer = setInterval(tick, 500);
+  ($("name").value ? $("sid") : $("name")).focus();
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("error").textContent = "";
+  $("submit").disabled = true;
+  const body = { name: $("name").value, studentId: $("sid").value };
+  try {
+    const res = await fetch("/api/checkin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 403) { message(data.error); return; }
+      $("error").textContent = data.error || "Something went wrong. Please try again.";
+      return;
+    }
+    try { localStorage.setItem("att-name", body.name); localStorage.setItem("att-sid", body.studentId); } catch {}
+    clearInterval(timer);
+    $("form-card").classList.add("hidden");
+    $("done-text").textContent = data.name + " (" + data.studentId + ") is recorded for " + data.sheetName + ".";
+    $("done-card").classList.remove("hidden");
+  } finally { $("submit").disabled = false; }
+});
+
+start();
+</script>
+</body>
+</html>
