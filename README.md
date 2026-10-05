@@ -20,24 +20,22 @@ Every sheet stays stored in the cloud database. You can rename, reopen, re-downl
 
 A student ID can only be checked in once per sheet.
 
-## Deploying (one time, about 10 minutes)
+## Deploying
 
-You need a free Cloudflare account and Node.js 20 or newer.
+Every merge to `main` deploys automatically through GitHub Actions (`.github/workflows/deploy.yml`). The first run also creates the database. One-time setup:
 
-```bash
-npm install
-npx wrangler login                    # opens the browser to sign in to Cloudflare
-npx wrangler d1 create attendance     # prints a database_id
-```
+1. Sign up for a free Cloudflare account at https://dash.cloudflare.com/sign-up.
+2. Open **Workers & Pages** in the dashboard once (this sets up your free `workers.dev` address), and copy your **Account ID** from the right-hand side.
+3. Create an API token at https://dash.cloudflare.com/profile/api-tokens. Use the **Edit Cloudflare Workers** template, and add **Account > D1 > Edit** if it is not listed.
+4. In GitHub, open the repository's **Settings > Secrets and variables > Actions** and add three repository secrets:
+   - `CLOUDFLARE_API_TOKEN`: the token from step 3
+   - `CLOUDFLARE_ACCOUNT_ID`: the ID from step 2
+   - `LECTURER_PASSCODE`: the passcode you will sign in with (letters and numbers)
+5. Open the **Actions** tab, pick **Deploy**, and press **Run workflow**.
 
-Paste the printed `database_id` into `wrangler.jsonc`, then:
+The app is then live at `https://attendance-gathering.<your-subdomain>.workers.dev`; the URL is printed at the end of the Deploy run. To change the passcode, update the secret and run Deploy again; this signs every lecturer browser out.
 
-```bash
-npx wrangler secret put LECTURER_PASSCODE   # choose your lecturer passcode
-npm run deploy                              # creates the tables and publishes the app
-```
-
-The app is then live at `https://attendance-gathering.<your-subdomain>.workers.dev`. A custom domain can be added later in the Cloudflare dashboard. Changing the passcode signs every lecturer browser out.
+To deploy from your own computer instead: `npx wrangler login`, `npx wrangler d1 create attendance`, paste the printed `database_id` into `wrangler.jsonc`, `npx wrangler secret put LECTURER_PASSCODE`, then `npm run deploy`.
 
 ## Developing
 
