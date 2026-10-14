@@ -25,9 +25,20 @@ describe("rotating QR token", () => {
 
 describe("csv export", () => {
   it("quotes cells, neutralises formulas and adds a BOM", () => {
-    const csv = toCsv([{ student_name: '=HYPERLINK("x")', student_id: "42", created_at: 0, flags: "" }]);
+    const csv = toCsv([{ student_name: '=HYPERLINK("x")', student_id: "42", created_at: 0, flags: "", notes: "", manual: 0 }]);
     expect(csv.startsWith("﻿")).toBe(true);
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
+  });
+
+  it("includes notes and marks manual entries", () => {
+    const csv = toCsv([
+      { student_name: "Sara", student_id: "1", created_at: 0, flags: "", notes: "left early", manual: 0 },
+      { student_name: "Omar", student_id: "2", created_at: 0, flags: "", notes: "", manual: 1 },
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toContain(`"How","Notes","Flags"`);
+    expect(lines[1]).toContain(`"QR scan","left early",""`);
+    expect(lines[2]).toContain(`"Added manually","",""`);
   });
 
   it("builds a readable file name", () => {

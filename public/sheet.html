@@ -23,11 +23,28 @@
     <p id="error" class="error"></p>
   </div>
   <div class="card">
+    <h2>Add a student manually</h2>
+    <form id="add-form">
+      <div class="row">
+        <input id="add-name" class="grow" type="text" maxlength="100" required placeholder="Name" aria-label="Student name">
+        <input id="add-sid" class="grow" type="text" maxlength="40" required placeholder="Student ID" aria-label="Student ID">
+      </div>
+      <textarea id="add-notes" rows="2" maxlength="1000" placeholder="Notes (optional)" aria-label="Notes"></textarea>
+      <div class="row">
+        <button type="submit">Add to sheet</button>
+        <span id="add-msg" class="success"></span>
+      </div>
+      <p id="add-error" class="error"></p>
+    </form>
+  </div>
+  <div class="card">
     <h2 id="count"></h2>
-    <table>
-      <thead><tr><th>#</th><th>Name</th><th>Student ID</th><th>Time</th><th>Flags</th><th></th></tr></thead>
-      <tbody id="records"></tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Name</th><th>Student ID</th><th>Time</th><th>Notes</th><th>Flags</th><th></th></tr></thead>
+        <tbody id="records"></tbody>
+      </table>
+    </div>
   </div>
   <div class="card">
     <button id="delete" class="danger" type="button">Delete this sheet</button>
@@ -40,6 +57,28 @@ const id = new URLSearchParams(location.search).get("id");
 let sheet;
 
 function show(e) { $("error").textContent = e.message; }
+
+function notesBox(r) {
+  const box = el("textarea", { class: "notes", rows: 1, maxlength: 1000, placeholder: "Add a note", "aria-label": "Notes for " + r.name });
+  box.value = r.notes;
+  box.rows = Math.min(4, r.notes.split("\n").length);
+  let saved = r.notes;
+  box.addEventListener("change", async () => {
+    try {
+      const res = await api("/api/admin/sheets/" + id + "/records/" + r.id, { method: "PATCH", body: { notes: box.value } });
+      saved = res.notes;
+      box.classList.remove("unsaved");
+    } catch (err) { box.classList.add("unsaved"); show(err); }
+  });
+  box.addEventListener("input", () => box.classList.toggle("unsaved", box.value !== saved));
+  return box;
+}
+
+// Don't redraw the table under the lecturer while they are typing.
+function isEditing() {
+  const a = document.activeElement;
+  return a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT") && a.id !== "name";
+}
 
 async function load() {
   const data = await api("/api/admin/sheets/" + id);
@@ -55,7 +94,8 @@ async function load() {
   body.replaceChildren();
   data.records.forEach((r, i) => body.append(el("tr", {},
     el("td", {}, i + 1), el("td", {}, r.name), el("td", {}, r.studentId), el("td", {}, fmtTime(r.createdAt)),
-    el("td", { class: "flag" }, r.flags),
+    el("td", {}, notesBox(r)),
+    el("td", {}, r.manual ? el("span", { class: "pill" }, "Added manually") : "", el("span", { class: "flag" }, r.flags)),
     el("td", {}, el("button", { type: "button", class: "danger", title: "Remove this check-in", onclick: async () => {
       if (!confirm("Remove " + r.name + " (" + r.studentId + ") from this sheet?")) return;
       await api("/api/admin/sheets/" + id + "/records/" + r.id, { method: "DELETE" }).catch(show);
@@ -68,6 +108,21 @@ $("rename-form").addEventListener("submit", async (e) => {
   try { await api("/api/admin/sheets/" + id, { method: "PATCH", body: { name: $("name").value } }); $("name").blur(); load(); }
   catch (err) { show(err); }
 });
+$("add-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("add-error").textContent = "";
+  $("add-msg").textContent = "";
+  try {
+    await api("/api/admin/sheets/" + id + "/records", {
+      method: "POST",
+      body: { name: $("add-name").value, studentId: $("add-sid").value, notes: $("add-notes").value },
+    });
+    $("add-msg").textContent = "Added " + $("add-name").value.trim() + ".";
+    $("add-form").reset();
+    $("add-name").focus();
+    load().catch(show);
+  } catch (err) { $("add-error").textContent = err.message; }
+});
 $("present").addEventListener("click", () => { location.href = "/present?id=" + id; });
 $("toggle").addEventListener("click", async () => {
   try { await api("/api/admin/sheets/" + id + "/" + (sheet.status === "open" ? "close" : "open"), { method: "POST" }); load(); }
@@ -79,7 +134,7 @@ $("delete").addEventListener("click", async () => {
 });
 
 load().catch(show);
-setInterval(() => { if (sheet && sheet.status === "open") load().catch(() => {}); }, 5000);
+setInterval(() => { if (sheet && sheet.status === "open" && !isEditing()) load().catch(() => {}); }, 5000);
 </script>
 </body>
 </html>

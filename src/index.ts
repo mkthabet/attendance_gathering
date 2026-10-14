@@ -68,6 +68,19 @@ function cleanText(v: unknown, max: number): string {
   return typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "";
 }
 
+/** Like cleanText, but keeps line breaks so notes can span several lines. */
+function cleanNotes(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 1000);
+}
+
 // ---------------------------------------------------------------- lecturer auth
 
 // The session cookie is signed with a key derived from the passcode, so
@@ -168,7 +181,7 @@ async function adminApi(req: Request, env: Env, parts: string[]): Promise<Respon
   if (action === "") {
     if (method === "GET") {
       const { results } = await env.DB.prepare(
-        "SELECT id, student_name, student_id, flags, created_at FROM records WHERE sheet_id = ? ORDER BY created_at",
+        "SELECT id, student_name, student_id, flags, notes, manual, created_at FROM records WHERE sheet_id = ? ORDER BY created_at",
       )
         .bind(sheet.id)
         .all<RecordRow & { id: number }>();
@@ -179,6 +192,8 @@ async function adminApi(req: Request, env: Env, parts: string[]): Promise<Respon
           name: r.student_name,
           studentId: r.student_id,
           flags: r.flags,
+          notes: r.notes,
+          manual: !!r.manual,
           createdAt: r.created_at,
         })),
       });
@@ -229,7 +244,34 @@ async function adminApi(req: Request, env: Env, parts: string[]): Promise<Respon
     return json({ count: await countFor(env, sheet.id), status: sheet.status });
   }
 
+  // /api/admin/sheets/:id/records: the lecturer adds a student by hand.
+  if (action === "records" && !parts[3] && method === "POST") {
+    const body = await readJson<{ name: string; studentId: string; notes: string }>(req);
+    const name = cleanText(body.name, 100);
+    const studentId = cleanText(body.studentId, 40);
+    if (!name || !studentId) return error(400, "Enter the student's name and student ID.");
+    try {
+      await env.DB.prepare(
+        "INSERT INTO records (sheet_id, student_name, student_id, device_id, notes, manual, created_at) VALUES (?, ?, ?, 'manual', ?, 1, ?)",
+      )
+        .bind(sheet.id, name, studentId, cleanNotes(body.notes), Date.now())
+        .run();
+    } catch {
+      return error(409, `Student ID ${studentId} is already on this sheet.`);
+    }
+    return json({ ok: true }, 201);
+  }
+
   // /api/admin/sheets/:id/records/:recordId
+  if (action === "records" && parts[3] && method === "PATCH") {
+    const body = await readJson<{ notes: string }>(req);
+    const notes = cleanNotes(body.notes);
+    const res = await env.DB.prepare("UPDATE records SET notes = ? WHERE id = ? AND sheet_id = ?")
+      .bind(notes, Number(parts[3]), sheet.id)
+      .run();
+    if (!res.meta.changes) return error(404, "That check-in no longer exists.");
+    return json({ ok: true, notes });
+  }
   if (action === "records" && parts[3] && method === "DELETE") {
     await env.DB.prepare("DELETE FROM records WHERE id = ? AND sheet_id = ?").bind(Number(parts[3]), sheet.id).run();
     return json({ ok: true });
@@ -238,7 +280,7 @@ async function adminApi(req: Request, env: Env, parts: string[]): Promise<Respon
   if (action === "export.csv" && method === "GET") {
     const tz = new URL(req.url).searchParams.get("tz") || "UTC";
     const { results } = await env.DB.prepare(
-      "SELECT student_name, student_id, flags, created_at FROM records WHERE sheet_id = ? ORDER BY created_at",
+      "SELECT student_name, student_id, flags, notes, manual, created_at FROM records WHERE sheet_id = ? ORDER BY created_at",
     )
       .bind(sheet.id)
       .all<RecordRow>();

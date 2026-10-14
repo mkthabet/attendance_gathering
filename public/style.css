@@ -16,7 +16,7 @@ h2 { font-size: 1.1rem; margin: 0 0 12px; }
 p.muted, .muted { color: var(--muted); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 16px 0; }
 label { display: block; font-weight: 600; margin: 12px 0 6px; }
-input[type=text], input[type=password] {
+input[type=text], input[type=password], textarea {
   width: 100%; font: inherit; font-size: 1.05rem; padding: 12px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--bg); color: var(--text);
 }
@@ -37,7 +37,12 @@ button:disabled { opacity: .6; cursor: default; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: start; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-size: .85rem; color: var(--muted); }
-td.flag { color: var(--warn); font-size: .9rem; }
+td.flag, .flag { color: var(--warn); font-size: .9rem; }
+textarea { display: block; margin: 8px 0; resize: vertical; }
+textarea.notes { font-size: .9rem; padding: 6px 8px; margin: 0; min-width: 160px; }
+textarea.unsaved { border-color: var(--warn); }
+.table-wrap { overflow-x: auto; }
+td .pill { display: block; white-space: nowrap; width: fit-content; margin-bottom: 4px; }
 .sheet-list a { color: inherit; text-decoration: none; }
 .sheet-item { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .sheet-item:last-child { border-bottom: 0; }
