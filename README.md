@@ -12,6 +12,8 @@ Runs free on Cloudflare Workers with a D1 database. Students install nothing.
 4. Press **Stop check-in** when done. Students who already scanned can still finish within their 3 minutes.
 5. On the sheet page, review check-ins, remove any you reject, and **Download CSV** (opens in Excel or Google Sheets).
 
+On the sheet page you can also add a student by hand (name and student ID, for example someone whose phone died) and write a note next to any student. Notes save when you click away from the box. Manually added students are marked "Added manually" on the page and in the CSV, which also has a Notes column.
+
 Every sheet stays stored in the cloud database. You can rename, reopen, re-download or delete it from the home page at any time.
 
 ### What the flags mean
@@ -51,6 +53,6 @@ npm test
 - `public/present.html` gets the sheet's secret once, then computes a fresh token every 5 seconds in the browser: an HMAC of the sheet id and the time window. Rotating the code costs no server requests.
 - `GET /c/:sheet/:window/:token` (the link in the QR) accepts the current or previous window only. It issues a 3-minute single-use ticket in an HttpOnly cookie and redirects to `/checkin`, removing the token from the address bar.
 - `POST /api/checkin` consumes the ticket and stores the record. A long-lived device cookie is used for the "same device" flag.
-- Tables: `sheets`, `tickets`, `records` (see `migrations/`).
+- Tables: `sheets`, `tickets`, `records` (see `migrations/`). The deploy workflow applies new migration files to the existing database, so add a new numbered file for any schema change rather than editing an old one.
 
 `public/vendor/qrcode.js` is [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) by Kazuhiko Arase (MIT).

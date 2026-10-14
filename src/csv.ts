@@ -3,6 +3,8 @@ export interface RecordRow {
   student_id: string;
   created_at: number;
   flags: string;
+  notes: string;
+  manual: number;
 }
 
 function cell(v: string): string {
@@ -26,9 +28,17 @@ export function formatTime(ms: number, timeZone: string): string {
 
 export function toCsv(rows: RecordRow[], timeZone = "UTC"): string {
   const lines = [
-    ["#", "Name", "Student ID", `Checked in (${timeZone})`, "Flags"].map(cell).join(","),
+    ["#", "Name", "Student ID", `Checked in (${timeZone})`, "How", "Notes", "Flags"].map(cell).join(","),
     ...rows.map((r, i) =>
-      [String(i + 1), r.student_name, r.student_id, formatTime(r.created_at, timeZone), r.flags].map(cell).join(","),
+      [
+        String(i + 1),
+        r.student_name,
+        r.student_id,
+        formatTime(r.created_at, timeZone),
+        r.manual ? "Added manually" : "QR scan",
+        r.notes,
+        r.flags,
+      ].map(cell).join(","),
     ),
   ];
   // BOM so Excel opens UTF-8 (e.g. Arabic names) correctly.
