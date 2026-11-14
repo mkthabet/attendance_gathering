@@ -55,6 +55,7 @@
 const $ = (id) => document.getElementById(id);
 const id = new URLSearchParams(location.search).get("id");
 let sheet;
+let editingId = null; // the record whose name / student ID is being edited
 
 function show(e) { $("error").textContent = e.message; }
 
@@ -76,8 +77,56 @@ function notesBox(r) {
 
 // Don't redraw the table under the lecturer while they are typing.
 function isEditing() {
+  if (editingId !== null) return true;
   const a = document.activeElement;
   return a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT") && a.id !== "name";
+}
+
+function row(r, i) {
+  const remove = el("button", { type: "button", class: "danger", title: "Remove this check-in", onclick: async () => {
+    if (!confirm("Remove " + r.name + " (" + r.studentId + ") from this sheet?")) return;
+    await api("/api/admin/sheets/" + id + "/records/" + r.id, { method: "DELETE" }).catch(show);
+    load();
+  } }, "Remove");
+  const flags = el("td", {}, r.manual ? el("span", { class: "pill" }, "Added manually") : "", el("span", { class: "flag" }, r.flags));
+  const cells = (nameCell, sidCell, actions) => el("tr", {},
+    el("td", {}, i + 1), nameCell, sidCell, el("td", {}, fmtTime(r.createdAt)),
+    el("td", {}, notesBox(r)), flags, el("td", { class: "actions" }, ...actions));
+
+  if (editingId !== r.id) {
+    const edit = el("button", { type: "button", title: "Edit name and student ID", onclick: () => {
+      editingId = r.id;
+      load().catch(show);
+    } }, "Edit");
+    return cells(el("td", {}, r.name), el("td", {}, r.studentId), [edit, remove]);
+  }
+
+  const nameIn = el("input", { type: "text", class: "cell", maxlength: 100, required: "", "aria-label": "Student name" });
+  const sidIn = el("input", { type: "text", class: "cell", maxlength: 40, required: "", "aria-label": "Student ID" });
+  nameIn.value = r.name;
+  sidIn.value = r.studentId;
+  const cancel = () => { editingId = null; load().catch(show); };
+  const save = async () => {
+    try {
+      await api("/api/admin/sheets/" + id + "/records/" + r.id, {
+        method: "PATCH",
+        body: { name: nameIn.value, studentId: sidIn.value },
+      });
+      $("error").textContent = "";
+      cancel();
+    } catch (err) { show(err); }
+  };
+  for (const input of [nameIn, sidIn]) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); save(); }
+      if (e.key === "Escape") cancel();
+    });
+  }
+  setTimeout(() => nameIn.focus());
+  return cells(el("td", {}, nameIn), el("td", {}, sidIn), [
+    el("button", { type: "button", class: "primary", onclick: save }, "Save"),
+    el("button", { type: "button", onclick: cancel }, "Cancel"),
+  ]);
 }
 
 async function load() {
@@ -92,15 +141,8 @@ async function load() {
   $("count").textContent = data.records.length + " checked in";
   const body = $("records");
   body.replaceChildren();
-  data.records.forEach((r, i) => body.append(el("tr", {},
-    el("td", {}, i + 1), el("td", {}, r.name), el("td", {}, r.studentId), el("td", {}, fmtTime(r.createdAt)),
-    el("td", {}, notesBox(r)),
-    el("td", {}, r.manual ? el("span", { class: "pill" }, "Added manually") : "", el("span", { class: "flag" }, r.flags)),
-    el("td", {}, el("button", { type: "button", class: "danger", title: "Remove this check-in", onclick: async () => {
-      if (!confirm("Remove " + r.name + " (" + r.studentId + ") from this sheet?")) return;
-      await api("/api/admin/sheets/" + id + "/records/" + r.id, { method: "DELETE" }).catch(show);
-      load();
-    } }, "Remove")))));
+  if (editingId !== null && !data.records.some((r) => r.id === editingId)) editingId = null;
+  data.records.forEach((r, i) => body.append(row(r, i)));
 }
 
 $("rename-form").addEventListener("submit", async (e) => {

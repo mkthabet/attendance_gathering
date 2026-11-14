@@ -262,15 +262,43 @@ async function adminApi(req: Request, env: Env, parts: string[]): Promise<Respon
     return json({ ok: true }, 201);
   }
 
-  // /api/admin/sheets/:id/records/:recordId
+  // /api/admin/sheets/:id/records/:recordId: edit a check-in's name, student ID
+  // and/or notes. Fields left out of the body are kept as they are.
   if (action === "records" && parts[3] && method === "PATCH") {
-    const body = await readJson<{ notes: string }>(req);
-    const notes = cleanNotes(body.notes);
-    const res = await env.DB.prepare("UPDATE records SET notes = ? WHERE id = ? AND sheet_id = ?")
-      .bind(notes, Number(parts[3]), sheet.id)
-      .run();
+    const body = await readJson<{ name: string; studentId: string; notes: string }>(req);
+    const sets: string[] = [];
+    const values: (string | number)[] = [];
+    let name: string | undefined;
+    let studentId: string | undefined;
+    if (body.name !== undefined) {
+      name = cleanText(body.name, 100);
+      if (!name) return error(400, "The student's name can't be empty.");
+      sets.push("student_name = ?");
+      values.push(name);
+    }
+    if (body.studentId !== undefined) {
+      studentId = cleanText(body.studentId, 40);
+      if (!studentId) return error(400, "The student ID can't be empty.");
+      sets.push("student_id = ?");
+      values.push(studentId);
+    }
+    let notes: string | undefined;
+    if (body.notes !== undefined) {
+      notes = cleanNotes(body.notes);
+      sets.push("notes = ?");
+      values.push(notes);
+    }
+    if (!sets.length) return error(400, "Nothing to change.");
+    let res: D1Result;
+    try {
+      res = await env.DB.prepare(`UPDATE records SET ${sets.join(", ")} WHERE id = ? AND sheet_id = ?`)
+        .bind(...values, Number(parts[3]), sheet.id)
+        .run();
+    } catch {
+      return error(409, `Student ID ${studentId} is already on this sheet.`);
+    }
     if (!res.meta.changes) return error(404, "That check-in no longer exists.");
-    return json({ ok: true, notes });
+    return json({ ok: true, name, studentId, notes });
   }
   if (action === "records" && parts[3] && method === "DELETE") {
     await env.DB.prepare("DELETE FROM records WHERE id = ? AND sheet_id = ?").bind(Number(parts[3]), sheet.id).run();
