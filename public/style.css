@@ -39,7 +39,7 @@ th, td { text-align: start; padding: 8px 6px; border-bottom: 1px solid var(--lin
 th { font-size: .85rem; color: var(--muted); }
 td.flag, .flag { color: var(--warn); font-size: .9rem; }
 textarea { display: block; margin: 8px 0; resize: vertical; }
-textarea.notes { font-size: .9rem; padding: 6px 8px; margin: 0; min-width: 160px; }
+textarea.notes { font-size: .9rem; padding: 6px 8px; margin: 0; min-width: 140px; }
 textarea.unsaved { border-color: var(--warn); }
 .table-wrap { overflow-x: auto; }
 td .pill { display: block; white-space: nowrap; width: fit-content; margin-bottom: 4px; }
@@ -47,3 +47,6 @@ td .pill { display: block; white-space: nowrap; width: fit-content; margin-botto
 .sheet-item { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .sheet-item:last-child { border-bottom: 0; }
 .hidden { display: none !important; }
+input.cell { font-size: .95rem; padding: 6px 8px; min-width: 90px; }
+td.actions { width: 1%; }
+td.actions button { display: block; width: 100%; padding: 6px 10px; margin: 0 0 4px; }
